@@ -30,6 +30,32 @@ class GravitySimulationTests(unittest.TestCase):
         self.assertTrue(math.isclose(initial[0], final[0], abs_tol=1e-9))
         self.assertTrue(math.isclose(initial[1], final[1], abs_tol=1e-9))
 
+    def test_barnes_hut_matches_exact_reasonably_well(self):
+        bodies = [
+            Body(float(i % 10), float(i // 10), 0, 0, 1 + (i % 3))
+            for i in range(100)
+        ]
+        exact_sim = NBodySimulation(
+            bodies, softening=0.5, barnes_hut_threshold=10_000
+        )
+        fast_sim = NBodySimulation(
+            bodies,
+            softening=0.5,
+            barnes_hut_threshold=0,
+            barnes_hut_theta=0.5,
+        )
+
+        exact = exact_sim._accelerations_exact()
+        approx = fast_sim.accelerations()
+
+        mean_relative_error = 0.0
+        for (ex, ey), (ax, ay) in zip(exact, approx):
+            denom = max(math.hypot(ex, ey), 1e-12)
+            mean_relative_error += math.hypot(ex - ax, ey - ay) / denom
+        mean_relative_error /= len(bodies)
+
+        self.assertLess(mean_relative_error, 0.05)
+
     def test_empty_simulation_can_step(self):
         sim = NBodySimulation()
         sim.step(0.1)
