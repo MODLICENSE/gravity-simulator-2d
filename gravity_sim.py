@@ -19,11 +19,89 @@ class Body:
     name: str = "Body"
 
 
-class NBodySimulation:
-    """Small educational 2D Newtonian N-body simulator.
+class _QuadNode:
+    """Internal node for the Barnes-Hut quadtree."""
 
-    Units are intentionally abstract. With G=1.0, positions, masses, velocities,
-    and time steps can be chosen for visually convenient orbital motion.
+    __slots__ = (
+        "cx",
+        "cy",
+        "half",
+        "depth",
+        "mass",
+        "com_x",
+        "com_y",
+        "indices",
+        "children",
+    )
+
+    LEAF_CAPACITY = 4
+    MAX_DEPTH = 32
+
+    def __init__(self, cx: float, cy: float, half: float, depth: int = 0) -> None:
+        self.cx = cx
+        self.cy = cy
+        self.half = half
+        self.depth = depth
+        self.mass = 0.0
+        self.com_x = 0.0
+        self.com_y = 0.0
+        self.indices: list[int] = []
+        self.children: list[_QuadNode] | None = None
+
+    def contains(self, x: float, y: float) -> bool:
+        return (
+            self.cx - self.half <= x <= self.cx + self.half
+            and self.cy - self.half <= y <= self.cy + self.half
+        )
+
+    def _child_index(self, x: float, y: float) -> int:
+        east = 1 if x >= self.cx else 0
+        south = 2 if y >= self.cy else 0
+        return east + south
+
+    def _subdivide(self) -> None:
+        q = self.half * 0.5
+        self.children = [
+            _QuadNode(self.cx - q, self.cy - q, q, self.depth + 1),
+            _QuadNode(self.cx + q, self.cy - q, q, self.depth + 1),
+            _QuadNode(self.cx - q, self.cy + q, q, self.depth + 1),
+            _QuadNode(self.cx + q, self.cy + q, q, self.depth + 1),
+        ]
+
+    def insert(self, body_index: int, bodies: list[Body]) -> None:
+        body = bodies[body_index]
+
+        new_mass = self.mass + body.mass
+        if new_mass != 0.0:
+            self.com_x = (self.com_x * self.mass + body.x * body.mass) / new_mass
+            self.com_y = (self.com_y * self.mass + body.y * body.mass) / new_mass
+        self.mass = new_mass
+
+        if self.children is None:
+            if len(self.indices) < self.LEAF_CAPACITY or self.depth >= self.MAX_DEPTH:
+                self.indices.append(body_index)
+                return
+
+            old_indices = self.indices
+            self.indices = []
+            self._subdivide()
+            assert self.children is not None
+            for old_index in old_indices:
+                old_body = bodies[old_index]
+                child = self.children[self._child_index(old_body.x, old_body.y)]
+                child.insert(old_index, bodies)
+
+        assert self.children is not None
+        child = self.children[self._child_index(body.x, body.y)]
+        child.insert(body_index, bodies)
+
+
+class NBodySimulation:
+    """2D Newtonian N-body simulator with automatic Barnes-Hut acceleration.
+
+    Small systems use exact O(n^2) pairwise gravity. Larger systems switch to
+    the Barnes-Hut quadtree algorithm, which is typically O(n log n).
+    Velocity-Verlet is used for time integration.
     """
 
     def __init__(
@@ -32,18 +110,31 @@ class NBodySimulation:
         *,
         gravitational_constant: float = 1.0,
         softening: float = 3.0,
+        barnes_hut_theta: float = 0.7,
+        barnes_hut_threshold: int = 64,
     ) -> None:
         self.bodies = list(bodies or [])
         self.G = float(gravitational_constant)
         self.softening = float(softening)
+        self.barnes_hut_theta = float(barnes_hut_theta)
+        self.barnes_hut_threshold = int(barnes_hut_threshold)
 
     def accelerations(self) -> list[tuple[float, float]]:
-        """Return acceleration on each body from every other body."""
+        """Return each body's acceleration.
+
+        Below ``barnes_hut_threshold`` bodies, the exact pairwise solver is
+        used. At or above it, Barnes-Hut is selected automatically.
+        """
+        if len(self.bodies) < self.barnes_hut_threshold:
+            return self._accelerations_exact()
+        return self._accelerations_barnes_hut()
+
+    def _accelerations_exact(self) -> list[tuple[float, float]]:
         n = len(self.bodies)
         acc = [[0.0, 0.0] for _ in range(n)]
         eps2 = self.softening * self.softening
 
-        # Pairwise update preserves Newton's third-law symmetry and reduces work.
+        # Symmetric pair update preserves Newton's third law exactly.
         for i in range(n):
             a = self.bodies[i]
             for j in range(i + 1, n):
@@ -63,12 +154,88 @@ class NBodySimulation:
 
         return [(ax, ay) for ax, ay in acc]
 
-    def step(self, dt: float) -> None:
-        """Advance one time step using velocity-Verlet integration.
+    def _build_quadtree(self) -> _QuadNode | None:
+        if not self.bodies:
+            return None
 
-        Velocity-Verlet is noticeably more stable for orbital systems than
-        explicit Euler while remaining compact and easy to understand.
-        """
+        min_x = min(body.x for body in self.bodies)
+        max_x = max(body.x for body in self.bodies)
+        min_y = min(body.y for body in self.bodies)
+        max_y = max(body.y for body in self.bodies)
+
+        cx = 0.5 * (min_x + max_x)
+        cy = 0.5 * (min_y + max_y)
+        span = max(max_x - min_x, max_y - min_y)
+        half = max(0.5 * span * 1.000001, 1e-9)
+
+        root = _QuadNode(cx, cy, half)
+        for i in range(len(self.bodies)):
+            root.insert(i, self.bodies)
+        return root
+
+    def _accelerations_barnes_hut(self) -> list[tuple[float, float]]:
+        root = self._build_quadtree()
+        if root is None:
+            return []
+
+        eps2 = self.softening * self.softening
+        theta = self.barnes_hut_theta
+        result: list[tuple[float, float]] = []
+
+        for target_index, target in enumerate(self.bodies):
+            ax = 0.0
+            ay = 0.0
+            stack = [root]
+
+            while stack:
+                node = stack.pop()
+                if node.mass == 0.0:
+                    continue
+
+                if node.children is None:
+                    # Nearby bodies in leaves are still evaluated exactly.
+                    for source_index in node.indices:
+                        if source_index == target_index:
+                            continue
+                        source = self.bodies[source_index]
+                        dx = source.x - target.x
+                        dy = source.y - target.y
+                        r2 = dx * dx + dy * dy + eps2
+                        inv_r3 = 1.0 / (r2 * math.sqrt(r2))
+                        factor = self.G * source.mass * inv_r3
+                        ax += dx * factor
+                        ay += dy * factor
+                    continue
+
+                dx = node.com_x - target.x
+                dy = node.com_y - target.y
+                distance_sq = dx * dx + dy * dy
+                distance = math.sqrt(distance_sq) if distance_sq > 0.0 else 0.0
+                width = 2.0 * node.half
+
+                # A node containing the target cannot be collapsed because its
+                # aggregate mass also contains that target's own mass.
+                can_approximate = (
+                    not node.contains(target.x, target.y)
+                    and distance > 0.0
+                    and width / distance < theta
+                )
+
+                if can_approximate:
+                    r2 = distance_sq + eps2
+                    inv_r3 = 1.0 / (r2 * math.sqrt(r2))
+                    factor = self.G * node.mass * inv_r3
+                    ax += dx * factor
+                    ay += dy * factor
+                else:
+                    stack.extend(node.children)
+
+            result.append((ax, ay))
+
+        return result
+
+    def step(self, dt: float) -> None:
+        """Advance one time step using velocity-Verlet integration."""
         if not self.bodies:
             return
 
