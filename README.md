@@ -6,7 +6,9 @@ testable module.
 
 ## Features
 
-- Newtonian pairwise gravity in 2D
+- Newtonian gravity in 2D
+- **Automatic Barnes-Hut acceleration** for larger systems (typically O(n log n))
+- Exact pairwise gravity for small systems (O(n^2))
 - Velocity-Verlet integration for better orbital stability than explicit Euler
 - Softened gravity to reduce singular behavior during close encounters
 - Interactive add/remove bodies
@@ -60,12 +62,20 @@ python -m unittest discover -s tests -v
 
 ## How the physics works
 
-For two bodies, the acceleration on body `i` due to body `j` is based on
-Newtonian gravity:
+For small systems the simulator evaluates every body-body force exactly. For
+larger systems (64+ bodies by default), it automatically switches to the
+**Barnes-Hut algorithm**. Barnes-Hut groups sufficiently distant bodies into
+quadtree cells and approximates each cell by its total mass at its center of
+mass. This reduces the usual O(n^2) force calculation to roughly O(n log n).
 
-```text
-a_i = G * m_j * r_ij / |r_ij|^3
-```
+The main accuracy/speed control is `barnes_hut_theta` in `NBodySimulation`:
+
+- Smaller theta (for example `0.4`) = more accurate, slower
+- Default `0.7` = faster, moderate approximation
+- Larger theta = faster, less accurate
+
+`barnes_hut_threshold` controls when the simulator switches from exact pairwise
+gravity to Barnes-Hut; the default is 64 bodies.
 
 A small softening term is added to the squared distance to avoid extremely
 large forces when two point masses nearly overlap.
@@ -79,7 +89,7 @@ much better for orbital motion than naive forward Euler integration.
 ```text
 .
 ├── app.py                    # Pygame UI and input handling
-├── gravity_sim.py            # Physics engine
+├── gravity_sim.py            # Physics engine + Barnes-Hut quadtree
 ├── tests/
 │   └── test_gravity_sim.py   # Unit tests
 ├── requirements.txt
