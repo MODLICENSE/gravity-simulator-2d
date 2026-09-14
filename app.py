@@ -31,6 +31,14 @@ PALETTE = [
     (255, 110, 180),
 ]
 
+GALAXY_COLORS = [
+    (235, 240, 255),
+    (190, 210, 255),
+    (150, 180, 255),
+    (255, 238, 200),
+    (255, 210, 155),
+]
+
 
 @dataclass(frozen=True)
 class Scenario:
@@ -43,6 +51,7 @@ SCENARIOS = [
     Scenario("solar", "Solar System", "Sun + 8 planets with realistic relative masses and orbital spacing."),
     Scenario("binary", "Binary Star System", "Two stars orbiting each other with circumbinary planets."),
     Scenario("random", "Randomized System", "A fresh random star cluster / planetary system every time."),
+    Scenario("galaxy", "Spiral Galaxy", "A dense rotating bulge plus four spiral arms with about 1,200 stars."),
 ]
 
 
@@ -139,11 +148,77 @@ def randomized_system(count: int = 120) -> list[Body]:
     return bodies
 
 
+def spiral_galaxy(star_count: int = 1200, arm_count: int = 4) -> list[Body]:
+    """Create a Milky-Way-inspired rotating disk with a dense central bulge.
+
+    This is an educational N-body initial condition, not a calibrated model of
+    the real Milky Way. The arm geometry is imposed initially; after startup,
+    every star evolves only under the same gravity solver as the other presets.
+    """
+    central_mass = 5200.0
+    disk_mass_scale = 2100.0
+    bulge_count = max(160, star_count // 5)
+    arm_count_stars = star_count - bulge_count
+    outer_radius = 780.0
+
+    bodies = [
+        Body(0, 0, 0, 0, central_mass, 11.0, (255, 245, 205), "Galactic Core")
+    ]
+
+    def circular_speed(r: float) -> float:
+        enclosed_disk = disk_mass_scale * (r / (r + 220.0))
+        enclosed_bulge = 650.0 * (r / (r + 70.0))
+        return math.sqrt((central_mass + enclosed_disk + enclosed_bulge) / max(r, 8.0))
+
+    for i in range(bulge_count):
+        r = min(190.0, abs(random.gauss(0.0, 62.0))) + random.uniform(4.0, 22.0)
+        angle = random.random() * math.tau
+        x = math.cos(angle) * r
+        y = math.sin(angle) * r * random.uniform(0.78, 1.0)
+        speed = circular_speed(r) * random.uniform(0.78, 1.08)
+        vx = -math.sin(angle) * speed + random.gauss(0.0, 0.35)
+        vy = math.cos(angle) * speed + random.gauss(0.0, 0.35)
+        mass = random.uniform(0.7, 2.2)
+        radius = random.uniform(1.1, 2.0)
+        color = random.choice([(255, 225, 175), (255, 205, 145), (245, 235, 210)])
+        bodies.append(Body(x, y, vx, vy, mass, radius, color, f"Bulge {i + 1}"))
+
+    for i in range(arm_count_stars):
+        arm = i % arm_count
+        u = random.random() ** 0.58
+        r = 75.0 + u * (outer_radius - 75.0)
+        arm_phase = arm * math.tau / arm_count
+        winding = 5.15 * (r / outer_radius) ** 0.88
+        angle = arm_phase + winding + random.gauss(0.0, 0.11 + 0.05 * r / outer_radius)
+        r_scatter = random.gauss(0.0, 8.0 + 0.025 * r)
+        rr = max(28.0, r + r_scatter)
+        x = math.cos(angle) * rr
+        y = math.sin(angle) * rr
+
+        speed = circular_speed(rr) * random.uniform(0.93, 1.07)
+        radial = random.gauss(0.0, 0.12)
+        vx = -math.sin(angle) * speed + math.cos(angle) * radial
+        vy = math.cos(angle) * speed + math.sin(angle) * radial
+
+        mass = random.uniform(0.45, 1.7)
+        radius = random.uniform(0.85, 1.55)
+        color = random.choices(
+            GALAXY_COLORS,
+            weights=(30, 23, 13, 22, 12),
+            k=1,
+        )[0]
+        bodies.append(Body(x, y, vx, vy, mass, radius, color, f"Star {i + 1}"))
+
+    return bodies
+
+
 def scenario_bodies(key: str) -> tuple[list[Body], float, float]:
     if key == "solar":
         return solar_system(), 0.08, 0.58
     if key == "binary":
         return binary_system(), 2.5, 0.95
+    if key == "galaxy":
+        return spiral_galaxy(), 5.0, 0.62
     return randomized_system(), 3.0, 0.92
 
 
@@ -167,11 +242,10 @@ class GravityApp:
         self.zoom = 1.0
         self.camera_x = 0.0
         self.camera_y = 0.0
+        self.trail_maxlen = 600
         self.trails: list[deque[tuple[float, float]]] = []
         self.drag_start: tuple[float, float] | None = None
 
-        # A moving reference frame changes only coordinates used by the UI.
-        # The physical state remains in its original inertial frame.
         self.reference_body: Body | None = None
         self.reference_pick_armed = False
 
@@ -182,7 +256,7 @@ class GravityApp:
 
     def ensure_trails(self) -> None:
         while len(self.trails) < len(self.sim.bodies):
-            self.trails.append(deque(maxlen=600))
+            self.trails.append(deque(maxlen=self.trail_maxlen))
         if len(self.trails) > len(self.sim.bodies):
             self.trails = self.trails[: len(self.sim.bodies)]
 
@@ -212,8 +286,10 @@ class GravityApp:
         bodies, softening, zoom = scenario_bodies(key)
         self.current_scenario = key
         self.sim = NBodySimulation(bodies, softening=softening)
+        self.trail_maxlen = 120 if key == "galaxy" else 600
         self.trails = []
         self.ensure_trails()
+        self.show_trails = key != "galaxy"
         self.time_scale = 1.0
         self.zoom = zoom
         self.camera_x = self.camera_y = 0.0
@@ -312,6 +388,8 @@ class GravityApp:
                 self.load_scenario("binary")
             elif event.key == pygame.K_3:
                 self.load_scenario("random")
+            elif event.key == pygame.K_4:
+                self.load_scenario("galaxy")
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for key, rect in self.menu_rects.items():
                 if rect.collidepoint(event.pos):
@@ -384,7 +462,13 @@ class GravityApp:
 
         if not self.paused:
             total_dt = 0.045 * self.time_scale
-            substeps = max(1, min(48, int(math.ceil(math.sqrt(self.time_scale)))))
+            if len(self.sim.bodies) >= 500:
+                substep_cap = 8
+            elif len(self.sim.bodies) >= 100:
+                substep_cap = 20
+            else:
+                substep_cap = 48
+            substeps = max(1, min(substep_cap, int(math.ceil(math.sqrt(self.time_scale)))))
             sub_dt = total_dt / substeps
             for _ in range(substeps):
                 self.sim.step(sub_dt)
@@ -443,15 +527,15 @@ class GravityApp:
         self.screen.fill(BACKGROUND)
         w, h = self.screen.get_size()
         title = self.big_font.render("Choose a Starting System", True, TEXT)
-        subtitle = self.font.render("Click a template or press 1 / 2 / 3", True, MUTED)
-        self.screen.blit(title, (w // 2 - title.get_width() // 2, 72))
-        self.screen.blit(subtitle, (w // 2 - subtitle.get_width() // 2, 120))
+        subtitle = self.font.render("Click a template or press 1 / 2 / 3 / 4", True, MUTED)
+        self.screen.blit(title, (w // 2 - title.get_width() // 2, 42))
+        self.screen.blit(subtitle, (w // 2 - subtitle.get_width() // 2, 86))
 
         mouse = pygame.mouse.get_pos()
         card_w = min(780, w - 80)
-        card_h = 118
-        gap = 18
-        top = 180
+        card_h = 105
+        gap = 12
+        top = 130
         self.menu_rects = {}
 
         for i, scenario in enumerate(SCENARIOS):
@@ -464,14 +548,15 @@ class GravityApp:
             number = self.title_font.render(str(i + 1), True, ACCENT)
             scenario_title = self.title_font.render(scenario.title, True, TEXT)
             desc = self.small_font.render(scenario.description, True, MUTED)
-            self.screen.blit(number, (rect.x + 22, rect.y + 19))
-            self.screen.blit(scenario_title, (rect.x + 62, rect.y + 18))
-            self.screen.blit(desc, (rect.x + 62, rect.y + 58))
+            self.screen.blit(number, (rect.x + 22, rect.y + 16))
+            self.screen.blit(scenario_title, (rect.x + 62, rect.y + 15))
+            self.screen.blit(desc, (rect.x + 62, rect.y + 53))
 
         note = self.small_font.render(
-            "Random mode starts with 120 bodies so Barnes-Hut is active immediately.", True, MUTED
+            "Galaxy mode uses Barnes-Hut and starts with trails off for performance.", True, MUTED
         )
-        self.screen.blit(note, (w // 2 - note.get_width() // 2, top + 3 * (card_h + gap) + 8))
+        note_y = top + len(SCENARIOS) * (card_h + gap) + 8
+        self.screen.blit(note, (w // 2 - note.get_width() // 2, note_y))
         pygame.display.flip()
 
     def draw_simulation(self) -> None:
@@ -486,7 +571,7 @@ class GravityApp:
 
         for body in self.sim.bodies:
             sx, sy = self.world_to_screen(body.x, body.y)
-            radius = max(2, int(body.radius * min(self.zoom, 2.2)))
+            radius = max(1, int(body.radius * min(self.zoom, 2.2)))
             pygame.draw.circle(self.screen, body.color, (sx, sy), radius)
             if body is self.reference_body:
                 pygame.draw.circle(self.screen, LOCK_COLOR, (sx, sy), radius + 5, 2)
