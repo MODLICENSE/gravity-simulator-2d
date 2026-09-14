@@ -4,24 +4,34 @@ A cross-platform Newtonian **N-body gravity simulator** written in Python with a
 
 ## Features
 
-- Exact pairwise Newtonian gravity for small systems
-- **Barnes-Hut** quadtree solver for larger systems
-- **Fast Multipole Method (FMM)** solver using a kernel-independent interpolation quadtree
-- Runtime solver switching with `B`
+- Newtonian gravity in 2D
+- **Symmetric Cartesian FMM** selected by default in the app
+- Switchable Barnes-Hut, exact, and automatic solvers with `S`
+- Exact pairwise gravity for small systems (O(n^2))
 - Velocity-Verlet integration
-- Softened gravity for close encounters
 - Startup scenario picker
-- Solar System, binary-star, randomized, and spiral-galaxy presets
+- Solar System preset with realistic relative planetary masses and orbital-distance ratios
+- Binary-star circumbinary preset
+- Randomized 120-body system
+- Near-equilibrium exponential galaxy disk with a smooth bulge/halo and mild evolving arms
 - Custom body colors, sizes, and masses
 - Selectable moving reference frames centered on any body
-- Simulation speed from 1/16x up to 4096x
+- Requested simulation speed from 1/16x to **4096x**, with fixed physics timesteps
+- Pause, reset, zoom, pan, and orbital trails
 - Windows, macOS, and Linux support with Python 3.10+
 
 ## Windows quick start
 
+Clone the repository, then enter it:
+
 ```powershell
 gh repo clone MODLICENSE/gravity-simulator-2d
 cd gravity-simulator-2d
+```
+
+Create and activate a virtual environment:
+
+```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -36,90 +46,163 @@ You can also launch with:
 
 ## Startup scenarios
 
-1. **Solar System** — Sun plus all eight planets with realistic relative masses and orbital-distance ratios.
-2. **Binary Star System** — two stars orbit a common barycenter with circumbinary planets.
-3. **Randomized System** — a new rotating multi-body system every time.
-4. **Spiral Galaxy** — roughly 1,200 stars in a dense bulge plus four spiral arms.
+When the program starts, choose one of four systems:
 
-Press `M` while simulating to return to scenario selection.
+1. **Solar System** — Sun plus all eight planets. Relative masses and semi-major-axis ratios are based on the real Solar System, while visual radii are enlarged so the planets remain visible. Orbits are circularized and the model is 2D.
+2. **Binary Star System** — two stars orbit a common barycenter with three circumbinary planets.
+3. **Randomized System** — a new 120-body rotating system every time. Uses the selected solver (FMM initially).
+4. **Spiral Galaxy** — a seeded 1,200-star exponential disk in a smooth bulge and halo, with mild spiral overdensities. FMM is selected initially; `S` or `B` changes the solver.
 
-## Solvers
+Press `M` while simulating to return to the scenario menu.
 
-Press **`B`** while the simulation is running to cycle:
+### Spiral galaxy notes
 
-```text
-Auto -> FMM -> Barnes-Hut -> Exact -> Auto
-```
+The galaxy now has a density profile and initial velocities designed for
+approximate dynamical equilibrium. Its smooth bulge/halo attracts every star
+through the same field in Exact, Barnes-Hut and FMM modes. Arms evolve naturally;
+they are not fixed tracks. Resets use the same seed for fair solver comparisons.
+Trails start off and have shorter history in this preset.
 
-The HUD displays both the selected mode and the solver currently being used.
-
-### Auto
-
-`Auto` uses exact gravity for fewer than 64 bodies and Barnes-Hut for larger systems.
-
-### Exact
-
-Every pair of bodies is evaluated directly. This is the reference implementation and is O(n^2).
-
-### Barnes-Hut
-
-Barnes-Hut builds a quadtree and approximates sufficiently distant cells by their total mass at their center of mass. It is usually around O(n log n) and has low overhead, making it a strong choice for medium-sized systems.
-
-The main tuning parameter is `barnes_hut_theta` in `NBodySimulation`.
-
-### FMM
-
-The FMM implementation is a **kernel-independent interpolation Fast Multipole Method** for the same softened inverse-square gravity kernel used by the rest of the simulator.
-
-It performs the standard FMM stages:
-
-```text
-P2M -> M2M -> M2L -> L2L -> L2P
-                    + exact near-field P2P
-```
-
-A uniform quadtree is used. Source distributions in each cell are represented at Chebyshev interpolation nodes. Well-separated cell interactions are translated once at the cell level and reused for all particles in the target cell, instead of traversing distant cells separately for every particle as Barnes-Hut does.
-
-The main FMM settings in `NBodySimulation` are:
-
-- `fmm_order` — interpolation order; higher is more accurate but more expensive
-- `fmm_leaf_capacity` — target average number of bodies per leaf
-- `fmm_max_level` — maximum uniform quadtree depth
-
-The default UI uses order 4 and a leaf capacity of 48.
-
-The FMM implementation is written in Python/NumPy for portability. It is intended as a real algorithmic implementation and comparison point, not as a replacement for highly optimized compiled FMM libraries. Depending on body count and distribution, the current Barnes-Hut implementation may still be faster in wall-clock time despite FMM's better asymptotic structure.
+The full preset remained confined over two reference orbits with both FMM and
+Barnes-Hut. Read [the theory, parameters, limitations, and measured results](docs/galaxy-stability.md).
+This is still an educational 2D model with a fixed background, not a calibrated
+or fully self-consistent live Milky Way model.
 
 ## Controls
 
 | Control | Action |
 |---|---|
-| `B` | Cycle Auto / FMM / Barnes-Hut / Exact |
-| Left click | Add a body using the selected color / size / mass |
+| Left click | Add a body using the currently selected color / size / mass |
 | Right click | Remove the nearest body |
-| Middle mouse drag | Pan camera in the world frame |
+| Middle mouse drag | Pan camera while in the world frame |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
-| `+` / `-` | Double / halve simulation speed |
-| `C` | Cycle new-body color |
+| `+` / `-` | Double / halve simulation speed (1/16x to 4096x) |
+| `C` | Cycle the color of newly created bodies |
 | `[` / `]` | Make newly created bodies smaller / larger |
-| `F`, then click body | Use that body as the moving reference frame |
-| `F` while locked | Return to world frame |
+| `F`, then left click a body | Lock the moving reference frame to that body |
+| `F` while locked | Return to the normal world frame |
+| `S` or `B` | Cycle FMM → Barnes-Hut → Exact → Auto |
 | `T` | Toggle trails |
-| `R` | Reset current scenario |
-| `M` | Scenario menu |
-| `Esc` / `Q` | Quit |
+| `R` | Reset the current scenario |
+| `M` | Return to scenario selection |
+| `Esc` or `Q` | Quit |
+
+The HUD displays the current new-body radius, mass, color, and active reference frame.
 
 ## Moving reference frames
 
-If body `r` is selected as the reference,
+Press `F` and then click a body. The selected body becomes the stationary center of the display.
+
+This is implemented as a coordinate transformation rather than by changing the physical state of the simulation. If body `r` is selected as the reference,
 
 ```text
 x'_i = x_i - x_r
 v'_i = v_i - v_r
 ```
 
-The physical integration remains in the original inertial coordinates. Trails are transformed using the selected body's historical positions too.
+so the selected body has zero displayed position and velocity while every other body's relative velocity is preserved. The underlying Newtonian integration continues in the original coordinates.
+
+Trails are transformed using the reference body's historical positions as well, so they show motion in the selected moving frame rather than simply following the camera.
+
+Press `F` again to release the reference frame.
+
+## High-speed simulation
+
+Speed and timestep are decoupled. The requested multiplier (up to 4096x) controls
+how many fixed steps run: dt=0.5 for the galaxy, 0.045 for the other presets.
+A bounded CPU budget takes additional steps when the machine has time. When it
+cannot keep up, the HUD displays **achieved/requested** speed instead of taking
+larger, unstable steps. This also prevents a growing catch-up backlog.
+
+## Update to the integrated main branch
+
+From your existing repository folder in PowerShell:
+
+```powershell
+git fetch origin
+git switch main
+git pull --ff-only origin main
+.\run_windows.bat
+```
+
+FMM is active at startup. Press `S` to compare solvers; the HUD shows the actual
+solver. Your selection survives scenario changes and resets. The solver itself
+uses only Python's standard library: no WSL, Fortran, CMake, CUDA, or compiler is
+needed. Pygame runs the UI. NumPy is retained for the experimental interpolation reference.
+
+## Fast multipole method
+
+`fmm.py` implements an original low-order symmetric Cartesian FMM using the
+cell-to-cell construction in [Dehnen (2014), Appendix A.1](https://arxiv.org/abs/1405.2255).
+It builds source moments (P2M/M2M), computes mutual multipole-to-local (M2L)
+interactions with a dual tree walk, translates local expansions downward (L2L),
+and evaluates them at particles (L2P). Nearby pairs are evaluated directly.
+
+The potential expansion has total degree 3: central source quadrupoles plus
+quadratic local acceleration expansions. Both directions of a cell pair use the
+same truncation, preserving total force to floating-point roundoff. The
+softened kernel is `1/sqrt(dx*dx + dy*dy + softening**2)`, so this retains the
+existing inverse-square Newtonian force in a plane. It does not substitute the
+logarithmic potential used by mathematical 2D Laplace FMM libraries.
+
+```python
+sim = NBodySimulation(bodies, solver="fmm", fmm_theta=0.5,
+                      fmm_leaf_capacity=16)
+```
+
+- `fmm_theta`: sum of cell radii divided by separation must be below this value.
+  Smaller values are more accurate but slower; `0` forces direct interactions.
+  Allowed range is `0 <= theta < 1`. This is an opening criterion, not a promised
+  relative error tolerance. Expansion order is fixed.
+- `fmm_leaf_capacity`: maximum bodies per ordinary leaf (default 16). A depth cap
+  prevents endless subdivision of coincident bodies.
+- Finite positions and nonnegative finite masses are required; zero-mass test
+  particles work. Coincident bodies require positive softening.
+- Library callers retain the previous default `solver="auto"` (exact below 64,
+  Barnes-Hut otherwise). The app explicitly selects FMM for this branch.
+
+This pure-Python implementation prioritizes portability and verifiable forces.
+FMM's cell interactions can approach linear scaling for well-behaved trees at
+fixed accuracy; this tree builder also visits particles on each level, and
+pathological clustering can force quadratic direct work. FMM is not guaranteed
+to beat Barnes-Hut for these small presets. The fixed timestep controls integration accuracy independently of the force approximation.
+
+### Reproduce the benchmark
+
+```powershell
+py benchmarks/benchmark_fmm.py --sizes 200 1000 3000 --repeats 3
+```
+
+Example Linux-container run, seed 42, uniform square, softening 1, median of
+three force evaluations (no rendering or integration):
+
+| Bodies | Exact ms | Barnes-Hut ms | FMM ms | FMM relative RMS force error |
+|---|---:|---:|---:|---:|
+| 200 | 6.58 | 3.97 | 5.30 | 0.071% |
+| 1,000 | 164.30 | 32.60 | 36.82 | 0.320% |
+| 3,000 | 1553.64 | 130.54 | 147.48 | 0.535% |
+
+At 3,000 bodies FMM was 10.5 times faster than exact, slightly slower than
+Barnes-Hut, and had lower aggregate error (Barnes-Hut: 2.20%). Parameters were
+FMM theta 0.5 and Barnes-Hut theta 0.7, so this is not an equal-accuracy benchmark.
+These are not Windows timings or FPS promises. Relative RMS is the norm of the
+force-vector error divided by the norm of the exact acceleration vector; it is
+not a bound on every particle's relative error.
+
+## Barnes-Hut gravity
+
+In `auto` mode, small systems evaluate every body-body force exactly. For systems with 64 or more bodies by default, it automatically switches to the **Barnes-Hut algorithm**.
+
+Barnes-Hut builds a quadtree and approximates sufficiently distant collections of bodies by their combined mass at their center of mass. This reduces the usual O(n^2) force calculation toward roughly O(n log n).
+
+The main accuracy/speed control is `barnes_hut_theta` in `NBodySimulation`:
+
+- Smaller theta such as `0.4` = more accurate, slower
+- Default `0.7` = balanced
+- Larger theta = faster, less accurate
+
+`barnes_hut_threshold` controls when the simulator switches from exact gravity to Barnes-Hut; the default is 64 bodies.
 
 ## Run the tests
 
@@ -127,23 +210,35 @@ The physical integration remains in the original inertial coordinates. Trails ar
 python -m unittest discover -s tests -v
 ```
 
-The tests include direct checks of exact gravity, Barnes-Hut accuracy, FMM accuracy relative to the exact solver, solver switching, momentum conservation, and empty-system handling.
-
 ## Project layout
 
 ```text
 .
-├── app.py                    # Small launcher
-├── gravity_app.py            # Pygame UI, scenarios and controls
-├── gravity_sim.py            # Exact + Barnes-Hut + FMM physics engine
+├── app.py                    # Entry point
+├── gravity_app.py            # UI and controls
+├── galaxy.py                 # Galaxy density and velocity initialization
+├── simulation_clock.py       # Fixed-step pacing and CPU budget
+├── gravity_sim.py            # Physics engine + solver dispatch
+├── fmm.py                    # Symmetric Cartesian FMM
+├── benchmarks/benchmark_fmm.py
 ├── tests/
-│   └── test_gravity_sim.py
+│   ├── test_fmm.py           # Accuracy, edge cases, conservation
+│   └── test_gravity_sim.py   # Existing physics tests
 ├── requirements.txt
 ├── run_windows.bat
 ├── LICENSE
 └── README.md
 ```
 
+## Alternative FMM implementation
+
+The other main-branch implementation is preserved in
+`experimental/interpolation_fmm.py` for accuracy/performance comparisons. The
+production `fmm` selection uses the symmetric Cartesian solver. `solver_mode`
+and `cycle_solver()` remain available for existing callers. The old `fmm_order`
+and `fmm_max_level` controls belong to the experimental interpolation engine;
+the production solver uses fixed expansion order and `fmm_theta`.
+
 ## Notes
 
-This is an educational simulator rather than a high-precision astrophysics package. The Solar System is simplified to 2D circularized starting orbits, and the spiral galaxy is a visually and dynamically interesting initial condition rather than a calibrated Milky Way model.
+This is an educational simulator rather than a high-precision astrophysics package. The Solar System preset uses realistic relative masses and orbital-distance ratios, but it is intentionally simplified to 2D circular orbits and uses enlarged display radii.

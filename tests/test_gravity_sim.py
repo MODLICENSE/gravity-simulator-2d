@@ -67,7 +67,6 @@ class GravitySimulationTests(unittest.TestCase):
             [Body(**vars(b)) for b in bodies],
             softening=1.5,
             solver_mode="fmm",
-            fmm_order=4,
             fmm_leaf_capacity=12,
         ).accelerations()
 

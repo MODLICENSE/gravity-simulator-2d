@@ -1,0 +1,26 @@
+{
+  "seed": 42,
+  "dt": 23.04,
+  "solver": "fmm",
+  "note": "Original preset and old 4096x timestep; radius threshold uses 1700, not old outer radius 780.",
+  "history": [
+    {
+      "time": 0,
+      "energy": -31149.0586431242,
+      "angular_momentum": 2144925.6685327184,
+      "r50": 463.58441802880634,
+      "r90": 723.7858636105474,
+      "positive_energy_mass_fraction": 0.0,
+      "outside_2R_mass_fraction": 0.0
+    },
+    {
+      "time": 345.59999999999997,
+      "energy": 2063690.5118426923,
+      "angular_momentum": 2144980.993726426,
+      "r50": 768.2022534749593,
+      "r90": 7950.384920720346,
+      "positive_energy_mass_fraction": 0.051389400249834405,
+      "outside_2R_mass_fraction": 0.0457578346996615
+    }
+  ]
+}

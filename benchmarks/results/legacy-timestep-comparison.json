@@ -1,0 +1,46 @@
+{
+  "solver": "barnes-hut",
+  "seed": 42,
+  "runs": {
+    "23.04": {
+      "initial": {
+        "energy": -31149.0586431242,
+        "angular_momentum": 2144925.6685327184,
+        "r50": 463.58441802880634,
+        "r90": 723.7858636105474,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      "final": {
+        "energy": 2062379.7959520998,
+        "angular_momentum": 2145103.404696604,
+        "r50": 572.0489736208649,
+        "r90": 1038.0831717123356,
+        "positive_energy_mass_fraction": 0.04591837328791946,
+        "outside_2R_mass_fraction": 0.018754870234245116
+      },
+      "steps": 2,
+      "duration": 46.08
+    },
+    "0.09995661605206073": {
+      "initial": {
+        "energy": -31149.0586431242,
+        "angular_momentum": 2144925.6685327184,
+        "r50": 463.58441802880634,
+        "r90": 723.7858636105474,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      "final": {
+        "energy": -31139.266679032757,
+        "angular_momentum": 2144961.1814750717,
+        "r50": 471.0851658415678,
+        "r90": 724.7459951418522,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      "steps": 461,
+      "duration": 46.08
+    }
+  }
+}
