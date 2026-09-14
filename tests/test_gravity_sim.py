@@ -1,4 +1,5 @@
 import math
+import random
 import unittest
 
 from gravity_sim import Body, NBodySimulation
@@ -18,10 +19,7 @@ class GravitySimulationTests(unittest.TestCase):
         self.assertAlmostEqual(a2y, 0.0)
 
     def test_momentum_is_nearly_conserved(self):
-        bodies = [
-            Body(-20, 0, 0, -1, 10),
-            Body(20, 0, 0, 1, 10),
-        ]
+        bodies = [Body(-20, 0, 0, -1, 10), Body(20, 0, 0, 1, 10)]
         sim = NBodySimulation(bodies, softening=0.5)
         initial = sim.total_momentum()
         for _ in range(1000):
@@ -35,26 +33,58 @@ class GravitySimulationTests(unittest.TestCase):
             Body(float(i % 10), float(i // 10), 0, 0, 1 + (i % 3))
             for i in range(100)
         ]
-        exact_sim = NBodySimulation(
-            bodies, softening=0.5, barnes_hut_threshold=10_000
-        )
-        fast_sim = NBodySimulation(
+        exact = NBodySimulation(bodies, softening=0.5, solver_mode="exact").accelerations()
+        approx = NBodySimulation(
             bodies,
             softening=0.5,
-            barnes_hut_threshold=0,
+            solver_mode="barnes-hut",
             barnes_hut_theta=0.5,
-        )
-
-        exact = exact_sim._accelerations_exact()
-        approx = fast_sim.accelerations()
-
-        mean_relative_error = 0.0
-        for (ex, ey), (ax, ay) in zip(exact, approx):
-            denom = max(math.hypot(ex, ey), 1e-12)
-            mean_relative_error += math.hypot(ex - ax, ey - ay) / denom
-        mean_relative_error /= len(bodies)
-
+        ).accelerations()
+        mean_relative_error = sum(
+            math.hypot(ex - ax, ey - ay) / max(math.hypot(ex, ey), 1e-12)
+            for (ex, ey), (ax, ay) in zip(exact, approx)
+        ) / len(bodies)
         self.assertLess(mean_relative_error, 0.05)
+
+    def test_fmm_matches_exact_reasonably_well(self):
+        random.seed(3)
+        bodies = [
+            Body(
+                random.uniform(-50, 50),
+                random.uniform(-50, 50),
+                0,
+                0,
+                random.uniform(0.5, 2.0),
+            )
+            for _ in range(96)
+        ]
+        exact = NBodySimulation(
+            [Body(**vars(b)) for b in bodies],
+            softening=1.5,
+            solver_mode="exact",
+        ).accelerations()
+        approx = NBodySimulation(
+            [Body(**vars(b)) for b in bodies],
+            softening=1.5,
+            solver_mode="fmm",
+            fmm_order=4,
+            fmm_leaf_capacity=12,
+        ).accelerations()
+
+        error = sum(
+            math.hypot(ex - ax, ey - ay)
+            for (ex, ey), (ax, ay) in zip(exact, approx)
+        )
+        magnitude = sum(math.hypot(ex, ey) for ex, ey in exact)
+        self.assertLess(error / max(magnitude, 1e-12), 0.01)
+
+    def test_solver_cycle(self):
+        sim = NBodySimulation()
+        self.assertEqual(sim.solver_mode, "auto")
+        self.assertEqual(sim.cycle_solver(), "fmm")
+        self.assertEqual(sim.cycle_solver(), "barnes-hut")
+        self.assertEqual(sim.cycle_solver(), "exact")
+        self.assertEqual(sim.cycle_solver(), "auto")
 
     def test_empty_simulation_can_step(self):
         sim = NBodySimulation()
