@@ -4,33 +4,24 @@ A cross-platform Newtonian **N-body gravity simulator** written in Python with a
 
 ## Features
 
-- Newtonian gravity in 2D
-- **Automatic Barnes-Hut acceleration** for larger systems (typically O(n log n))
-- Exact pairwise gravity for small systems (O(n^2))
+- Exact pairwise Newtonian gravity for small systems
+- **Barnes-Hut** quadtree solver for larger systems
+- **Fast Multipole Method (FMM)** solver using a kernel-independent interpolation quadtree
+- Runtime solver switching with `B`
 - Velocity-Verlet integration
+- Softened gravity for close encounters
 - Startup scenario picker
-- Solar System preset with realistic relative planetary masses and orbital-distance ratios
-- Binary-star circumbinary preset
-- Randomized 120-body system that immediately exercises Barnes-Hut
-- Spiral galaxy preset with a dense bulge, four spiral arms, and about 1,200 stars
+- Solar System, binary-star, randomized, and spiral-galaxy presets
 - Custom body colors, sizes, and masses
 - Selectable moving reference frames centered on any body
-- Simulation speed from 1/16x up to **4096x**
-- Pause, reset, zoom, pan, and orbital trails
+- Simulation speed from 1/16x up to 4096x
 - Windows, macOS, and Linux support with Python 3.10+
 
 ## Windows quick start
 
-Clone the repository, then enter it:
-
 ```powershell
 gh repo clone MODLICENSE/gravity-simulator-2d
 cd gravity-simulator-2d
-```
-
-Create and activate a virtual environment:
-
-```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -45,85 +36,90 @@ You can also launch with:
 
 ## Startup scenarios
 
-When the program starts, choose one of four systems:
+1. **Solar System** — Sun plus all eight planets with realistic relative masses and orbital-distance ratios.
+2. **Binary Star System** — two stars orbit a common barycenter with circumbinary planets.
+3. **Randomized System** — a new rotating multi-body system every time.
+4. **Spiral Galaxy** — roughly 1,200 stars in a dense bulge plus four spiral arms.
 
-1. **Solar System** — Sun plus all eight planets. Relative masses and semi-major-axis ratios are based on the real Solar System, while visual radii are enlarged so the planets remain visible. Orbits are circularized and the model is 2D.
-2. **Binary Star System** — two stars orbit a common barycenter with three circumbinary planets.
-3. **Randomized System** — a new 120-body rotating system every time. This exceeds the Barnes-Hut threshold, so the fast solver is active immediately.
-4. **Spiral Galaxy** — a Milky-Way-inspired initial condition with a dense central bulge, a massive core, four spiral arms, and roughly 1,200 stars. Barnes-Hut is active automatically.
+Press `M` while simulating to return to scenario selection.
 
-Press `M` while simulating to return to the scenario menu.
+## Solvers
 
-### Spiral galaxy notes
+Press **`B`** while the simulation is running to cycle:
 
-The galaxy preset is intended as a visually interesting N-body system rather than a calibrated model of the real Milky Way. Its spiral structure is imposed in the initial state; after startup, every star evolves only under the normal gravity solver.
+```text
+Auto -> FMM -> Barnes-Hut -> Exact -> Auto
+```
 
-To keep the large system usable:
+The HUD displays both the selected mode and the solver currently being used.
 
-- Barnes-Hut is active automatically.
-- Trails start **off** in the galaxy preset; press `T` if you want them.
-- Galaxy trails use a shorter history buffer.
-- Integration substeps are capped more aggressively once the simulation contains 500+ bodies.
+### Auto
+
+`Auto` uses exact gravity for fewer than 64 bodies and Barnes-Hut for larger systems.
+
+### Exact
+
+Every pair of bodies is evaluated directly. This is the reference implementation and is O(n^2).
+
+### Barnes-Hut
+
+Barnes-Hut builds a quadtree and approximates sufficiently distant cells by their total mass at their center of mass. It is usually around O(n log n) and has low overhead, making it a strong choice for medium-sized systems.
+
+The main tuning parameter is `barnes_hut_theta` in `NBodySimulation`.
+
+### FMM
+
+The FMM implementation is a **kernel-independent interpolation Fast Multipole Method** for the same softened inverse-square gravity kernel used by the rest of the simulator.
+
+It performs the standard FMM stages:
+
+```text
+P2M -> M2M -> M2L -> L2L -> L2P
+                    + exact near-field P2P
+```
+
+A uniform quadtree is used. Source distributions in each cell are represented at Chebyshev interpolation nodes. Well-separated cell interactions are translated once at the cell level and reused for all particles in the target cell, instead of traversing distant cells separately for every particle as Barnes-Hut does.
+
+The main FMM settings in `NBodySimulation` are:
+
+- `fmm_order` — interpolation order; higher is more accurate but more expensive
+- `fmm_leaf_capacity` — target average number of bodies per leaf
+- `fmm_max_level` — maximum uniform quadtree depth
+
+The default UI uses order 4 and a leaf capacity of 48.
+
+The FMM implementation is written in Python/NumPy for portability. It is intended as a real algorithmic implementation and comparison point, not as a replacement for highly optimized compiled FMM libraries. Depending on body count and distribution, the current Barnes-Hut implementation may still be faster in wall-clock time despite FMM's better asymptotic structure.
 
 ## Controls
 
 | Control | Action |
 |---|---|
-| Left click | Add a body using the currently selected color / size / mass |
+| `B` | Cycle Auto / FMM / Barnes-Hut / Exact |
+| Left click | Add a body using the selected color / size / mass |
 | Right click | Remove the nearest body |
-| Middle mouse drag | Pan camera while in the world frame |
+| Middle mouse drag | Pan camera in the world frame |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
-| `+` / `-` | Double / halve simulation speed (1/16x to 4096x) |
-| `C` | Cycle the color of newly created bodies |
+| `+` / `-` | Double / halve simulation speed |
+| `C` | Cycle new-body color |
 | `[` / `]` | Make newly created bodies smaller / larger |
-| `F`, then left click a body | Lock the moving reference frame to that body |
-| `F` while locked | Return to the normal world frame |
+| `F`, then click body | Use that body as the moving reference frame |
+| `F` while locked | Return to world frame |
 | `T` | Toggle trails |
-| `R` | Reset the current scenario |
-| `M` | Return to scenario selection |
-| `Esc` or `Q` | Quit |
-
-The HUD displays the current new-body radius, mass, color, and active reference frame.
+| `R` | Reset current scenario |
+| `M` | Scenario menu |
+| `Esc` / `Q` | Quit |
 
 ## Moving reference frames
 
-Press `F` and then click a body. The selected body becomes the stationary center of the display.
-
-This is implemented as a coordinate transformation rather than by changing the physical state of the simulation. If body `r` is selected as the reference,
+If body `r` is selected as the reference,
 
 ```text
 x'_i = x_i - x_r
 v'_i = v_i - v_r
 ```
 
-so the selected body has zero displayed position and velocity while every other body's relative velocity is preserved. The underlying Newtonian integration continues in the original coordinates.
-
-Trails are transformed using the reference body's historical positions as well, so they show motion in the selected moving frame rather than simply following the camera.
-
-Press `F` again to release the reference frame.
-
-## High-speed simulation
-
-The time multiplier can be increased to **4096x**.
-
-The integrator uses an adaptive/capped number of substeps instead of performing one extra Python loop for every unit of speed. That lets very large time multipliers remain usable without turning 1024x into literally 1024 full physics iterations every frame.
-
-Very high multipliers necessarily trade numerical accuracy for elapsed simulated time. For close encounters or precise orbit inspection, reduce the speed.
-
-## Barnes-Hut gravity
-
-For small systems the simulator evaluates every body-body force exactly. For systems with 64 or more bodies by default, it automatically switches to the **Barnes-Hut algorithm**.
-
-Barnes-Hut builds a quadtree and approximates sufficiently distant collections of bodies by their combined mass at their center of mass. This reduces the usual O(n^2) force calculation toward roughly O(n log n).
-
-The main accuracy/speed control is `barnes_hut_theta` in `NBodySimulation`:
-
-- Smaller theta such as `0.4` = more accurate, slower
-- Default `0.7` = balanced
-- Larger theta = faster, less accurate
-
-`barnes_hut_threshold` controls when the simulator switches from exact gravity to Barnes-Hut; the default is 64 bodies.
+The physical integration remains in the original inertial coordinates. Trails are transformed using the selected body's historical positions too.
 
 ## Run the tests
 
@@ -131,14 +127,17 @@ The main accuracy/speed control is `barnes_hut_theta` in `NBodySimulation`:
 python -m unittest discover -s tests -v
 ```
 
+The tests include direct checks of exact gravity, Barnes-Hut accuracy, FMM accuracy relative to the exact solver, solver switching, momentum conservation, and empty-system handling.
+
 ## Project layout
 
 ```text
 .
-├── app.py                    # UI, scenario presets, controls
-├── gravity_sim.py            # Physics engine + Barnes-Hut quadtree
+├── app.py                    # Small launcher
+├── gravity_app.py            # Pygame UI, scenarios and controls
+├── gravity_sim.py            # Exact + Barnes-Hut + FMM physics engine
 ├── tests/
-│   └── test_gravity_sim.py   # Physics tests
+│   └── test_gravity_sim.py
 ├── requirements.txt
 ├── run_windows.bat
 ├── LICENSE
@@ -147,4 +146,4 @@ python -m unittest discover -s tests -v
 
 ## Notes
 
-This is an educational simulator rather than a high-precision astrophysics package. The Solar System preset uses realistic relative masses and orbital-distance ratios, but it is intentionally simplified to 2D circular orbits and uses enlarged display radii.
+This is an educational simulator rather than a high-precision astrophysics package. The Solar System is simplified to 2D circularized starting orbits, and the spiral galaxy is a visually and dynamically interesting initial condition rather than a calibrated Milky Way model.
