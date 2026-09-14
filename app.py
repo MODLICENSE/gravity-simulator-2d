@@ -235,7 +235,7 @@ class GravityApp:
 
         self.mode = "menu"
         self.current_scenario = "solar"
-        self.sim = NBodySimulation([], softening=3.0)
+        self.sim = NBodySimulation([], softening=3.0, solver="fmm")
         self.paused = False
         self.show_trails = True
         self.time_scale = 1.0
@@ -285,7 +285,7 @@ class GravityApp:
     def load_scenario(self, key: str) -> None:
         bodies, softening, zoom = scenario_bodies(key)
         self.current_scenario = key
-        self.sim = NBodySimulation(bodies, softening=softening)
+        self.sim = NBodySimulation(bodies, softening=softening, solver=self.sim.solver)
         self.trail_maxlen = 120 if key == "galaxy" else 600
         self.trails = []
         self.ensure_trails()
@@ -409,6 +409,9 @@ class GravityApp:
                 self.reset()
             elif event.key == pygame.K_m:
                 self.mode = "menu"
+            elif event.key == pygame.K_s:
+                solvers = ("fmm", "barnes-hut", "exact", "auto")
+                self.sim.solver = solvers[(solvers.index(self.sim.solver) + 1) % len(solvers)]
             elif event.key == pygame.K_t:
                 self.show_trails = not self.show_trails
             elif event.key == pygame.K_f:
@@ -577,7 +580,9 @@ class GravityApp:
                 pygame.draw.circle(self.screen, LOCK_COLOR, (sx, sy), radius + 5, 2)
 
         status = "PAUSED" if self.paused else "RUNNING"
-        solver = "Barnes-Hut" if len(self.sim.bodies) >= self.sim.barnes_hut_threshold else "Exact"
+        solver = {"fmm": "FMM", "barnes-hut": "Barnes-Hut", "exact": "Exact"}[self.sim.active_solver]
+        if self.sim.solver == "auto":
+            solver += " (auto)"
         ref_name = self.reference_body.name if self.reference_index() is not None else "World"
         header = (
             f"{status}   bodies={len(self.sim.bodies)}   solver={solver}   "
@@ -613,7 +618,7 @@ class GravityApp:
             "Left click: add custom body   Right click: remove nearest   Middle-drag: pan",
             "F then click body: lock moving reference frame   F again: return to world frame",
             "C: color   [ / ]: smaller/larger body   +/-: speed (up to 4096x)   T: trails",
-            "Mouse wheel: zoom   Space: pause   R: reset   M: scenario menu   Esc/Q: quit",
+            "S: solver   Mouse wheel: zoom   Space: pause   R: reset   M: scenario menu   Esc/Q: quit",
         ]
         for i, line in enumerate(controls):
             self.screen.blit(self.small_font.render(line, True, MUTED), (16, controls_y + 21 * i))

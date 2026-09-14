@@ -97,7 +97,7 @@ class _QuadNode:
 
 
 class NBodySimulation:
-    """2D Newtonian N-body simulator with automatic Barnes-Hut acceleration.
+    """2D Newtonian N-body simulator with exact, Barnes-Hut and FMM solvers.
 
     Small systems use exact O(n^2) pairwise gravity. Larger systems switch to
     the Barnes-Hut quadtree algorithm, which is typically O(n log n).
@@ -112,7 +112,15 @@ class NBodySimulation:
         softening: float = 3.0,
         barnes_hut_theta: float = 0.7,
         barnes_hut_threshold: int = 64,
+        solver: str = "auto",
+        fmm_theta: float = 0.5,
+        fmm_leaf_capacity: int = 16,
     ) -> None:
+        if solver not in ("auto", "exact", "barnes-hut", "fmm"):
+            raise ValueError("Unknown solver: " + solver)
+        self.solver = solver
+        self.fmm_theta = float(fmm_theta)
+        self.fmm_leaf_capacity = fmm_leaf_capacity
         self.bodies = list(bodies or [])
         self.G = float(gravitational_constant)
         self.softening = float(softening)
@@ -122,12 +130,25 @@ class NBodySimulation:
     def accelerations(self) -> list[tuple[float, float]]:
         """Return each body's acceleration.
 
-        Below ``barnes_hut_threshold`` bodies, the exact pairwise solver is
-        used. At or above it, Barnes-Hut is selected automatically.
+        Explicit solver choices override automatic dispatch. In auto mode,
+        exact is used below ``barnes_hut_threshold`` and Barnes-Hut above it.
         """
-        if len(self.bodies) < self.barnes_hut_threshold:
+        selected = self.active_solver
+        if selected == "exact":
             return self._accelerations_exact()
-        return self._accelerations_barnes_hut()
+        if selected == "barnes-hut":
+            return self._accelerations_barnes_hut()
+        if selected == "fmm":
+            from fmm import accelerations
+            return accelerations(self.bodies, self.G, self.softening,
+                                 self.fmm_theta, self.fmm_leaf_capacity)
+        raise ValueError("Unknown solver: " + selected)
+
+    @property
+    def active_solver(self) -> str:
+        if self.solver == "auto":
+            return "exact" if len(self.bodies) < self.barnes_hut_threshold else "barnes-hut"
+        return self.solver
 
     def _accelerations_exact(self) -> list[tuple[float, float]]:
         n = len(self.bodies)
