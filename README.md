@@ -13,6 +13,7 @@ A cross-platform Newtonian **N-body gravity simulator** written in Python with a
 - Binary-star circumbinary preset
 - Randomized 120-body system that immediately exercises Barnes-Hut
 - Custom body colors, sizes, and masses
+- Selectable moving reference frames centered on any body
 - Simulation speed from 1/16x up to **4096x**
 - Pause, reset, zoom, pan, and orbital trails
 - Windows, macOS, and Linux support with Python 3.10+
@@ -57,22 +58,41 @@ Press `M` while simulating to return to the scenario menu.
 |---|---|
 | Left click | Add a body using the currently selected color / size / mass |
 | Right click | Remove the nearest body |
-| Middle mouse drag | Pan camera |
+| Middle mouse drag | Pan camera while in the world frame |
 | Mouse wheel | Zoom |
 | Space | Pause / resume |
 | `+` / `-` | Double / halve simulation speed (1/16x to 4096x) |
 | `C` | Cycle the color of newly created bodies |
 | `[` / `]` | Make newly created bodies smaller / larger |
+| `F`, then left click a body | Lock the moving reference frame to that body |
+| `F` while locked | Return to the normal world frame |
 | `T` | Toggle trails |
 | `R` | Reset the current scenario |
 | `M` | Return to scenario selection |
 | `Esc` or `Q` | Quit |
 
-The HUD displays the current new-body radius, mass, and color before you place it.
+The HUD displays the current new-body radius, mass, color, and active reference frame.
+
+## Moving reference frames
+
+Press `F` and then click a body. The selected body becomes the stationary center of the display.
+
+This is implemented as a coordinate transformation rather than by changing the physical state of the simulation. If body `r` is selected as the reference,
+
+```text
+x'_i = x_i - x_r
+v'_i = v_i - v_r
+```
+
+so the selected body has zero displayed position and velocity while every other body's relative velocity is preserved. The underlying Newtonian integration continues in the original coordinates.
+
+Trails are transformed using the reference body's historical positions as well, so they show motion in the selected moving frame rather than simply following the camera.
+
+Press `F` again to release the reference frame.
 
 ## High-speed simulation
 
-The time multiplier is no longer capped at 16x. It can be increased to **4096x**.
+The time multiplier can be increased to **4096x**.
 
 The integrator uses an adaptive/capped number of substeps instead of performing one extra Python loop for every unit of speed. That lets very large time multipliers remain usable without turning 1024x into literally 1024 full physics iterations every frame.
 
