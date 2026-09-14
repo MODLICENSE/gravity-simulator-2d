@@ -12,6 +12,7 @@ A cross-platform Newtonian **N-body gravity simulator** written in Python with a
 - Solar System preset with realistic relative planetary masses and orbital-distance ratios
 - Binary-star circumbinary preset
 - Randomized 120-body system that immediately exercises Barnes-Hut
+- Spiral galaxy preset with a dense bulge, four spiral arms, and about 1,200 stars
 - Custom body colors, sizes, and masses
 - Selectable moving reference frames centered on any body
 - Simulation speed from 1/16x up to **4096x**
@@ -44,13 +45,25 @@ You can also launch with:
 
 ## Startup scenarios
 
-When the program starts, choose one of three systems:
+When the program starts, choose one of four systems:
 
 1. **Solar System** — Sun plus all eight planets. Relative masses and semi-major-axis ratios are based on the real Solar System, while visual radii are enlarged so the planets remain visible. Orbits are circularized and the model is 2D.
 2. **Binary Star System** — two stars orbit a common barycenter with three circumbinary planets.
 3. **Randomized System** — a new 120-body rotating system every time. This exceeds the Barnes-Hut threshold, so the fast solver is active immediately.
+4. **Spiral Galaxy** — a Milky-Way-inspired initial condition with a dense central bulge, a massive core, four spiral arms, and roughly 1,200 stars. Barnes-Hut is active automatically.
 
 Press `M` while simulating to return to the scenario menu.
+
+### Spiral galaxy notes
+
+The galaxy preset is intended as a visually interesting N-body system rather than a calibrated model of the real Milky Way. Its spiral structure is imposed in the initial state; after startup, every star evolves only under the normal gravity solver.
+
+To keep the large system usable:
+
+- Barnes-Hut is active automatically.
+- Trails start **off** in the galaxy preset; press `T` if you want them.
+- Galaxy trails use a shorter history buffer.
+- Integration substeps are capped more aggressively once the simulation contains 500+ bodies.
 
 ## Controls
 
