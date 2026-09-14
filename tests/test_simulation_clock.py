@@ -21,6 +21,25 @@ class ClockTests(unittest.TestCase):
         c.advance(steps.append,0,1,clock=lambda:0)
         self.assertEqual(steps,[.5])
 
+    def test_manual_dt_changes_throughput_and_clears_backlog(self):
+        c=FixedStepClock(timestep=.5)
+        c.pending=10
+        self.assertEqual(c.adjust_timestep(1),1)
+        self.assertEqual(c.pending,0)
+        for _ in range(10):
+            c.adjust_timestep(1)
+        self.assertEqual(c.timestep,8)
+        ticks=iter((0,.02))
+        calls=[]
+        c.advance(calls.append,.1,4096,clock=lambda:next(ticks))
+        self.assertEqual(calls,[8])
+        c.adjust_timestep()
+        self.assertEqual(c.timestep,.5)
+        self.assertEqual(c.pending,0)
+        for _ in range(10):
+            c.adjust_timestep(-1)
+        self.assertEqual(c.timestep,.125)
+
     def test_pause_resets_accumulator(self):
         c=FixedStepClock(timestep=.5)
         c.advance(lambda dt:None,.1,1)

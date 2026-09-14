@@ -92,9 +92,14 @@ stability problem. None of these initial checks is a stability certificate.
 
 ## Speed is separate from timestep
 
-`FixedStepClock` uses dt=0.5 for the galaxy and dt=0.045 for other presets.
+`FixedStepClock` defaults to dt=0.5 for the galaxy and dt=0.045 for other presets.
+Page Up/Page Down explicitly double/halve dt over a bounded 1/4x–16x range;
+0 restores the preset default. Manual changes clear backlog and the speed
+average. dt is constant between these user edits. COARSE marks multipliers
+above 2x; this is an indicator, not a validated error bound.
 The nominal 1x rate is 2.7 simulation units per real second, matching the old
-.045-per-frame rate at 60 FPS. Speed changes the number of steps due, never dt.
+.045-per-frame rate at 60 FPS. The speed multiplier changes the number of steps due, never dt; the separate
+timestep controls make that accuracy tradeoff explicit.
 A 12-ms physics work budget permits additional steps when CPU time is available.
 A single force evaluation can itself exceed the budget; it cannot be interrupted.
 
@@ -160,3 +165,29 @@ py benchmarks/check_galaxy.py --count 256 --orbits 3 --dt .5 --solvers fmm --out
 
 Validation ran on Linux. Windows compatibility is covered by the configured CI
 matrix but is not inferred from these Linux results.
+
+## Appearance versus mass
+
+`galaxy_render.py` draws the existing smooth bulge as a projected Plummer-like
+light profile plus unresolved-star grain. This does not introduce additional
+N-body particles or modify force parameters. Disk colors and visual radii were
+changed to a violet/magenta/blue palette; all physical initial conditions are
+bit-for-bit identical. The colors are stylized, not stellar temperature data.
+The Milky Way has an elongated/barred central bulge, unlike this spherical
+approximation ([ESA](https://www.esa.int/ESA_Multimedia/Images/2018/05/Anatomy_of_the_Milky_Way)).
+
+## Manual larger-step checks
+
+Full 1,200-star FMM preset, seed 42, two reference orbits:
+
+| Requested dt | Relative to default | Final R50 change | Max sampled energy drift | Final positive-energy fraction |
+|---:|---:|---:|---:|---:|
+| 4 | 8x | 0.87% | 0.00161% | 0 |
+| 8 | 16x | 1.62% | 0.00887% | 0 |
+
+The diagnostic uses a slightly shortened constant dt to end at exactly two orbits.
+Additional 256-star, three-orbit checks at dt=2,4,8 are also committed. These
+support using larger steps for visual exploration of this preset; they do not
+establish accuracy for every encounter, altered mass distribution, or long run.
+A larger timestep advances more time per force evaluation, not faster force
+evaluations. Start at dt=2 or 4 and compare with a default-step reset.

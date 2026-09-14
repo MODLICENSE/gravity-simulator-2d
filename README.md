@@ -68,6 +68,18 @@ Barnes-Hut. Read [the theory, parameters, limitations, and measured results](doc
 This is still an educational 2D model with a fixed background, not a calibrated
 or fully self-consistent live Milky Way model.
 
+### Galaxy appearance
+
+Violet, magenta, blue, and warm stars use cached additive glows. The luminous
+center is a visual representation of the **existing smooth bulge**, including
+an unresolved-star texture. Those points are not extra force particles. The
+dark-matter halo remains invisible. Press **G** to toggle the glow layer.
+
+The purple palette is sci-fi-inspired. The density model is not calibrated to
+the Milky Way, whose central bulge is barred rather than our spherical Plummer
+model ([ESA overview](https://www.esa.int/ESA_Multimedia/Images/2018/05/Anatomy_of_the_Milky_Way)).
+The visual changes preserve every particle's initial position, velocity, and mass.
+
 ## Controls
 
 | Control | Action |
@@ -83,12 +95,15 @@ or fully self-consistent live Milky Way model.
 | `F`, then left click a body | Lock the moving reference frame to that body |
 | `F` while locked | Return to the normal world frame |
 | `S` or `B` | Cycle FMM → Barnes-Hut → Exact → Auto |
+| `Page Up` / `Page Down` | Double / halve physics timestep (1/4x–16x the preset default) |
+| `0` | Restore default timestep |
+| `G` | Toggle galaxy bulge/glow rendering |
 | `T` | Toggle trails |
 | `R` | Reset the current scenario |
 | `M` | Return to scenario selection |
 | `Esc` or `Q` | Quit |
 
-The HUD displays the current new-body radius, mass, color, and active reference frame.
+The HUD displays the current new-body radius, mass, color, reference frame, and timestep. Steps above 2x the preset default are marked COARSE.
 
 ## Moving reference frames
 
@@ -110,10 +125,16 @@ Press `F` again to release the reference frame.
 ## High-speed simulation
 
 Speed and timestep are decoupled. The requested multiplier (up to 4096x) controls
-how many fixed steps run: dt=0.5 for the galaxy, 0.045 for the other presets.
+how many steps run. Defaults are dt=0.5 for the galaxy and 0.045 for other presets.
+Use **Page Up / Page Down** to adjust timestep independently, or **0** to reset it.
+The bounded range is 1/4x–16x the default (galaxy: 0.125 to 8). Timestep stays
+fixed between explicit changes. Larger steps advance more simulated time per
+force calculation but resolve orbits less accurately. A change clears pending
+time and the speed estimate to avoid catch-up bursts; scenario resets restore
+the default.
 A bounded CPU budget takes additional steps when the machine has time. When it
 cannot keep up, the HUD displays **achieved/requested** speed instead of taking
-larger, unstable steps. This also prevents a growing catch-up backlog.
+automatically enlarging steps. This also prevents a growing catch-up backlog.
 
 ## Update to the integrated main branch
 

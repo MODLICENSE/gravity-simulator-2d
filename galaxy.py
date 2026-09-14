@@ -18,8 +18,8 @@ OUTER_RADIUS = 850.0
 SOFTENING = 12.0
 MAX_TIMESTEP = 1.0
 BACKGROUND = PlummerBackground(((1800.0, 65.0), (18000.0, 450.0)))
-COLORS = [(235, 240, 255), (190, 210, 255), (150, 180, 255),
-          (255, 238, 200), (255, 210, 155)]
+COLORS = [(199, 125, 255), (124, 170, 255), (255, 120, 219),
+          (220, 215, 255), (255, 211, 158)]
 _CDF_MAX = 1 - (1 + OUTER_RADIUS/SCALE_LENGTH)*math.exp(-OUTER_RADIUS/SCALE_LENGTH)
 
 
@@ -118,7 +118,7 @@ def spiral_galaxy(star_count=1200, arm_count=4, *, seed=42, arm_fraction=.18):
         vx = vr*math.cos(angle)-vt*math.sin(angle)
         vy = vr*math.sin(angle)+vt*math.cos(angle)
         color = COLORS[rng.randrange(3)] if arm else COLORS[rng.randrange(len(COLORS))]
-        radius = 1.7 if arm else (1.5 if r < 100 else 1.1)
+        radius = 2.2 if arm else (1.7 if r < 100 else 1.35)
         for sign in (1, -1):
             if len(bodies) < star_count:
                 bodies.append(Body(sign*x,sign*y,sign*vx,sign*vy,DISK_MASS/star_count,

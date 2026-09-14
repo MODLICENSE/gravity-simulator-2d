@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from galaxy_render import GalaxyLighting
 from simulation_clock import FixedStepClock
 from gravity_sim import Body, NBodySimulation
 from galaxy import spiral_galaxy, BACKGROUND as GALAXY_BACKGROUND, SOFTENING as GALAXY_SOFTENING
@@ -164,6 +165,8 @@ class GravityApp:
         self.big_font = pygame.font.SysFont("consolas", 34, bold=True)
         self.title_font = pygame.font.SysFont("consolas", 23, bold=True)
 
+        self.galaxy_lighting = GalaxyLighting()
+        self.show_glow = True
         self.physics_clock = FixedStepClock()
         self.mode = "menu"
         self.current_scenario = "solar"
@@ -347,6 +350,14 @@ class GravityApp:
                 self.mode = "menu"
             elif event.key in (pygame.K_s, pygame.K_b):
                 self.sim.cycle_solver()
+            elif event.key == pygame.K_PAGEUP:
+                self.physics_clock.adjust_timestep(1)
+            elif event.key == pygame.K_PAGEDOWN:
+                self.physics_clock.adjust_timestep(-1)
+            elif event.key in (pygame.K_0, pygame.K_KP0):
+                self.physics_clock.adjust_timestep()
+            elif event.key == pygame.K_g:
+                self.show_glow = not self.show_glow
             elif event.key == pygame.K_t:
                 self.show_trails = not self.show_trails
             elif event.key == pygame.K_f:
@@ -480,7 +491,7 @@ class GravityApp:
             self.screen.blit(desc, (rect.x + 62, rect.y + 53))
 
         note = self.small_font.render(
-            "Galaxy mode uses Barnes-Hut and starts with trails off for performance.", True, MUTED
+            "Galaxy: violet starlight, a luminous bulge, and freely evolving arms.", True, MUTED
         )
         note_y = top + len(SCENARIOS) * (card_h + gap) + 8
         self.screen.blit(note, (w // 2 - note.get_width() // 2, note_y))
@@ -488,7 +499,10 @@ class GravityApp:
 
     def draw_simulation(self) -> None:
         self.screen.fill(BACKGROUND)
-        self.draw_grid()
+        if self.current_scenario != "galaxy":
+            self.draw_grid()
+        elif self.show_glow:
+            self.galaxy_lighting.draw_bulge(self.screen,self.world_to_screen(0,0),self.zoom)
 
         if self.show_trails:
             for i, body in enumerate(self.sim.bodies):
@@ -498,7 +512,9 @@ class GravityApp:
 
         for body in self.sim.bodies:
             sx, sy = self.world_to_screen(body.x, body.y)
-            radius = max(1, int(body.radius * min(self.zoom, 2.2)))
+            if self.current_scenario == "galaxy" and self.show_glow:
+                self.galaxy_lighting.draw_star(self.screen,body,(sx,sy),self.zoom)
+            radius = max(1, round(body.radius * min(self.zoom, 2.2)))
             pygame.draw.circle(self.screen, body.color, (sx, sy), radius)
             if body is self.reference_body:
                 pygame.draw.circle(self.screen, LOCK_COLOR, (sx, sy), radius + 5, 2)
@@ -510,7 +526,7 @@ class GravityApp:
         ref_name = self.reference_body.name if self.reference_index() is not None else "World"
         header = (
             f"{status}   bodies={len(self.sim.bodies)}   solver={solver}   "
-            f"speed={self.effective_time_scale:g}x/{self.time_scale:g}x   zoom={self.zoom:.2f}x   frame={ref_name}"
+            f"speed={self.effective_time_scale:.1f}x/{self.time_scale:g}x   zoom={self.zoom:.2f}x   frame={ref_name}"
         )
         self.screen.blit(self.font.render(header, True, TEXT), (16, 14))
 
@@ -522,6 +538,13 @@ class GravityApp:
         self.screen.blit(spawn_surface, (16, 43))
         swatch_x = 16 + spawn_surface.get_width() + 8
         pygame.draw.circle(self.screen, self.spawn_color, (swatch_x + 8, 51), 7)
+
+        factor = 2**self.physics_clock.timestep_level
+        dt_text = f"dt={self.physics_clock.timestep:g} ({factor:g}x step)"
+        if factor > 2:
+            dt_text += "  COARSE"
+        dt_color = LOCK_COLOR if factor > 2 else MUTED
+        self.screen.blit(self.small_font.render(dt_text, True, dt_color), (swatch_x+35, 43))
 
         if self.reference_pick_armed:
             pick_text = "REFERENCE PICK: click a body to make it the stationary center"
@@ -539,6 +562,7 @@ class GravityApp:
             controls_y = 68
 
         controls = [
+            "PgUp/PgDn: larger/smaller timestep (accuracy vs speed)   0: default step   G: galaxy glow",
             "Left click: add custom body   Right click: remove nearest   Middle-drag: pan",
             "F then click body: lock moving reference frame   F again: return to world frame",
             "C: color   [ / ]: smaller/larger body   +/-: speed (up to 4096x)   T: trails",

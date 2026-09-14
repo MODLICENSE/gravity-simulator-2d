@@ -1,0 +1,82 @@
+{
+  "count": 256,
+  "seed": 42,
+  "dt": 2.0,
+  "reference_period": 562.9175444351948,
+  "runs": {
+    "fmm": [
+      {
+        "time": 0,
+        "energy": -39081.16156492119,
+        "angular_momentum": 1786202.4990933782,
+        "r50": 315.3467302902981,
+        "r90": 652.3446885423937,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 279.79333569559975,
+        "energy": -39081.945018537,
+        "angular_momentum": 1786128.8626534606,
+        "r50": 328.53862369228307,
+        "r90": 657.7166330581855,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 559.5866713911995,
+        "energy": -39082.816424046076,
+        "angular_momentum": 1786054.3084203757,
+        "r50": 312.82929760867654,
+        "r90": 669.213773749945,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 839.3800070867993,
+        "energy": -39082.373140265925,
+        "angular_momentum": 1786093.0712402842,
+        "r50": 301.54189061263503,
+        "r90": 663.0242432358982,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 1119.173342782399,
+        "energy": -39081.92153922175,
+        "angular_momentum": 1786134.6559350223,
+        "r50": 315.397167487829,
+        "r90": 692.5668356424015,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 1398.9666784779988,
+        "energy": -39082.59455515786,
+        "angular_momentum": 1786104.9680315938,
+        "r50": 307.74929342012626,
+        "r90": 658.5199732101053,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 1678.7600141735986,
+        "energy": -39081.26941322674,
+        "angular_momentum": 1786205.9117120872,
+        "r50": 327.6915625413932,
+        "r90": 710.4279915952807,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      },
+      {
+        "time": 1688.7526333055844,
+        "energy": -39081.26104457575,
+        "angular_momentum": 1786209.691497981,
+        "r50": 325.7895662105482,
+        "r90": 709.1568866568134,
+        "positive_energy_mass_fraction": 0.0,
+        "outside_2R_mass_fraction": 0.0
+      }
+    ]
+  }
+}
