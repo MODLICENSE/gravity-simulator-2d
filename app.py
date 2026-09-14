@@ -18,6 +18,7 @@ MUTED = (150, 160, 180)
 ACCENT = (95, 180, 255)
 PANEL = (19, 24, 36)
 PANEL_HOVER = (31, 39, 56)
+LOCK_COLOR = (255, 235, 120)
 
 PALETTE = [
     (140, 220, 255),
@@ -46,16 +47,9 @@ SCENARIOS = [
 
 
 def solar_system() -> list[Body]:
-    """Solar System using realistic relative masses and semi-major-axis ratios.
-
-    The model is intentionally 2D and circularized for a clean educational
-    starting state. Distances are proportional to AU, masses are relative to
-    the Sun, and visual radii are enlarged so planets remain visible.
-    """
+    """Solar System using realistic relative masses and semi-major-axis ratios."""
     au = 18.0
     sun = Body(0, 0, 0, 0, mass=1.0, radius=14, color=(255, 210, 80), name="Sun")
-
-    # name, AU, solar masses, visual radius, color
     data = [
         ("Mercury", 0.387, 1.66e-7, 3.0, (170, 165, 155)),
         ("Venus", 0.723, 2.45e-6, 4.5, (220, 185, 105)),
@@ -66,9 +60,7 @@ def solar_system() -> list[Body]:
         ("Uranus", 19.191, 4.37e-5, 6.7, (135, 220, 230)),
         ("Neptune", 30.069, 5.15e-5, 6.5, (75, 115, 245)),
     ]
-
     bodies = [sun]
-    # Spread initial phases so the display is visually interesting.
     phases = [0.2, 1.1, 2.2, 3.1, 4.0, 5.0, 0.9, 2.7]
     for (name, semi_major_au, mass, radius, color), phase in zip(data, phases):
         r = semi_major_au * au
@@ -122,9 +114,7 @@ def binary_system() -> list[Body]:
 def randomized_system(count: int = 120) -> list[Body]:
     """Generate a randomized rotating system large enough to exercise Barnes-Hut."""
     star_mass = random.uniform(900.0, 1800.0)
-    bodies = [
-        Body(0, 0, 0, 0, star_mass, 14, (255, 210, 95), "Primary")
-    ]
+    bodies = [Body(0, 0, 0, 0, star_mass, 14, (255, 210, 95), "Primary")]
 
     for i in range(count):
         r = random.uniform(55.0, 520.0)
@@ -150,7 +140,6 @@ def randomized_system(count: int = 120) -> list[Body]:
 
 
 def scenario_bodies(key: str) -> tuple[list[Body], float, float]:
-    """Return bodies, softening, and suggested starting zoom for a scenario."""
     if key == "solar":
         return solar_system(), 0.08, 0.58
     if key == "binary":
@@ -181,6 +170,11 @@ class GravityApp:
         self.trails: list[deque[tuple[float, float]]] = []
         self.drag_start: tuple[float, float] | None = None
 
+        # A moving reference frame changes only coordinates used by the UI.
+        # The physical state remains in its original inertial frame.
+        self.reference_body: Body | None = None
+        self.reference_pick_armed = False
+
         self.spawn_color_index = 0
         self.spawn_radius = 6.0
         self.spawn_mass = 8.0
@@ -192,6 +186,28 @@ class GravityApp:
         if len(self.trails) > len(self.sim.bodies):
             self.trails = self.trails[: len(self.sim.bodies)]
 
+    def reference_index(self) -> int | None:
+        if self.reference_body is None:
+            return None
+        for i, body in enumerate(self.sim.bodies):
+            if body is self.reference_body:
+                return i
+        self.reference_body = None
+        return None
+
+    def reference_origin(self) -> tuple[float, float]:
+        idx = self.reference_index()
+        if idx is None:
+            return 0.0, 0.0
+        body = self.sim.bodies[idx]
+        return body.x, body.y
+
+    def clear_reference(self) -> None:
+        self.reference_body = None
+        self.reference_pick_armed = False
+        self.camera_x = 0.0
+        self.camera_y = 0.0
+
     def load_scenario(self, key: str) -> None:
         bodies, softening, zoom = scenario_bodies(key)
         self.current_scenario = key
@@ -201,6 +217,8 @@ class GravityApp:
         self.time_scale = 1.0
         self.zoom = zoom
         self.camera_x = self.camera_y = 0.0
+        self.reference_body = None
+        self.reference_pick_armed = False
         self.paused = False
         self.mode = "simulation"
 
@@ -209,15 +227,38 @@ class GravityApp:
 
     def world_to_screen(self, x: float, y: float) -> tuple[int, int]:
         w, h = self.screen.get_size()
-        sx = (x - self.camera_x) * self.zoom + w / 2
-        sy = (y - self.camera_y) * self.zoom + h / 2
+        ref_x, ref_y = self.reference_origin()
+        sx = (x - ref_x - self.camera_x) * self.zoom + w / 2
+        sy = (y - ref_y - self.camera_y) * self.zoom + h / 2
         return int(sx), int(sy)
 
     def screen_to_world(self, sx: float, sy: float) -> tuple[float, float]:
         w, h = self.screen.get_size()
-        x = (sx - w / 2) / self.zoom + self.camera_x
-        y = (sy - h / 2) / self.zoom + self.camera_y
+        ref_x, ref_y = self.reference_origin()
+        x = (sx - w / 2) / self.zoom + self.camera_x + ref_x
+        y = (sy - h / 2) / self.zoom + self.camera_y + ref_y
         return x, y
+
+    def nearest_body_on_screen(
+        self, pos: tuple[int, int], max_distance_px: float = 28.0
+    ) -> Body | None:
+        best_body = None
+        best_d2 = max_distance_px * max_distance_px
+        for body in self.sim.bodies:
+            sx, sy = self.world_to_screen(body.x, body.y)
+            d2 = (sx - pos[0]) ** 2 + (sy - pos[1]) ** 2
+            if d2 <= best_d2:
+                best_body = body
+                best_d2 = d2
+        return best_body
+
+    def choose_reference_body(self, pos: tuple[int, int]) -> None:
+        body = self.nearest_body_on_screen(pos)
+        if body is not None:
+            self.reference_body = body
+            self.reference_pick_armed = False
+            self.camera_x = 0.0
+            self.camera_y = 0.0
 
     @property
     def spawn_color(self) -> tuple[int, int, int]:
@@ -227,12 +268,16 @@ class GravityApp:
         x, y = self.screen_to_world(*pos)
         angle = random.random() * math.tau
         speed = random.uniform(0.15, 1.0)
+
+        ref_vx = self.reference_body.vx if self.reference_index() is not None else 0.0
+        ref_vy = self.reference_body.vy if self.reference_index() is not None else 0.0
+
         self.sim.bodies.append(
             Body(
                 x,
                 y,
-                math.cos(angle) * speed,
-                math.sin(angle) * speed,
+                ref_vx + math.cos(angle) * speed,
+                ref_vy + math.sin(angle) * speed,
                 mass=self.spawn_mass,
                 radius=self.spawn_radius,
                 color=self.spawn_color,
@@ -249,8 +294,11 @@ class GravityApp:
             range(len(self.sim.bodies)),
             key=lambda i: (self.sim.bodies[i].x - x) ** 2 + (self.sim.bodies[i].y - y) ** 2,
         )
+        removed = self.sim.bodies[index]
         del self.sim.bodies[index]
         del self.trails[index]
+        if removed is self.reference_body:
+            self.clear_reference()
 
     def handle_menu_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.QUIT:
@@ -285,6 +333,11 @@ class GravityApp:
                 self.mode = "menu"
             elif event.key == pygame.K_t:
                 self.show_trails = not self.show_trails
+            elif event.key == pygame.K_f:
+                if self.reference_body is not None:
+                    self.clear_reference()
+                else:
+                    self.reference_pick_armed = not self.reference_pick_armed
             elif event.key == pygame.K_c:
                 self.spawn_color_index = (self.spawn_color_index + 1) % len(PALETTE)
             elif event.key in (pygame.K_RIGHTBRACKET, pygame.K_PERIOD):
@@ -302,10 +355,13 @@ class GravityApp:
             self.zoom = max(0.03, min(12.0, self.zoom * factor))
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                self.add_body(event.pos)
+                if self.reference_pick_armed:
+                    self.choose_reference_body(event.pos)
+                else:
+                    self.add_body(event.pos)
             elif event.button == 3:
                 self.remove_nearest(event.pos)
-            elif event.button == 2:
+            elif event.button == 2 and self.reference_body is None:
                 self.drag_start = event.pos
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 2:
             self.drag_start = None
@@ -327,8 +383,6 @@ class GravityApp:
             return
 
         if not self.paused:
-            # High time multipliers should not mean thousands of Python loops.
-            # We increase integration granularity gently and cap the CPU cost.
             total_dt = 0.045 * self.time_scale
             substeps = max(1, min(48, int(math.ceil(math.sqrt(self.time_scale)))))
             sub_dt = total_dt / substeps
@@ -363,6 +417,28 @@ class GravityApp:
             pygame.draw.line(self.screen, GRID, (0, sy), (w, sy), 1)
             y += spacing_world
 
+    def transformed_trail_points(self, body_index: int) -> list[tuple[int, int]]:
+        trail = self.trails[body_index]
+        ref_index = self.reference_index()
+
+        if ref_index is None:
+            return [self.world_to_screen(x, y) for x, y in trail]
+
+        ref_trail = self.trails[ref_index]
+        n = min(len(trail), len(ref_trail))
+        if n < 2:
+            return []
+
+        body_points = list(trail)[-n:]
+        ref_points = list(ref_trail)[-n:]
+        w, h = self.screen.get_size()
+        points: list[tuple[int, int]] = []
+        for (x, y), (rx, ry) in zip(body_points, ref_points):
+            sx = (x - rx) * self.zoom + w / 2
+            sy = (y - ry) * self.zoom + h / 2
+            points.append((int(sx), int(sy)))
+        return points
+
     def draw_menu(self) -> None:
         self.screen.fill(BACKGROUND)
         w, h = self.screen.get_size()
@@ -386,10 +462,10 @@ class GravityApp:
             pygame.draw.rect(self.screen, ACCENT, rect, 2, border_radius=12)
 
             number = self.title_font.render(str(i + 1), True, ACCENT)
-            title = self.title_font.render(scenario.title, True, TEXT)
+            scenario_title = self.title_font.render(scenario.title, True, TEXT)
             desc = self.small_font.render(scenario.description, True, MUTED)
             self.screen.blit(number, (rect.x + 22, rect.y + 19))
-            self.screen.blit(title, (rect.x + 62, rect.y + 18))
+            self.screen.blit(scenario_title, (rect.x + 62, rect.y + 18))
             self.screen.blit(desc, (rect.x + 62, rect.y + 58))
 
         note = self.small_font.render(
@@ -403,21 +479,24 @@ class GravityApp:
         self.draw_grid()
 
         if self.show_trails:
-            for trail, body in zip(self.trails, self.sim.bodies):
-                if len(trail) >= 2:
-                    points = [self.world_to_screen(x, y) for x, y in trail]
+            for i, body in enumerate(self.sim.bodies):
+                points = self.transformed_trail_points(i)
+                if len(points) >= 2:
                     pygame.draw.lines(self.screen, body.color, False, points, 1)
 
         for body in self.sim.bodies:
             sx, sy = self.world_to_screen(body.x, body.y)
             radius = max(2, int(body.radius * min(self.zoom, 2.2)))
             pygame.draw.circle(self.screen, body.color, (sx, sy), radius)
+            if body is self.reference_body:
+                pygame.draw.circle(self.screen, LOCK_COLOR, (sx, sy), radius + 5, 2)
 
         status = "PAUSED" if self.paused else "RUNNING"
         solver = "Barnes-Hut" if len(self.sim.bodies) >= self.sim.barnes_hut_threshold else "Exact"
+        ref_name = self.reference_body.name if self.reference_index() is not None else "World"
         header = (
             f"{status}   bodies={len(self.sim.bodies)}   solver={solver}   "
-            f"speed={self.time_scale:g}x   zoom={self.zoom:.2f}x"
+            f"speed={self.time_scale:g}x   zoom={self.zoom:.2f}x   frame={ref_name}"
         )
         self.screen.blit(self.font.render(header, True, TEXT), (16, 14))
 
@@ -430,13 +509,29 @@ class GravityApp:
         swatch_x = 16 + spawn_surface.get_width() + 8
         pygame.draw.circle(self.screen, self.spawn_color, (swatch_x + 8, 51), 7)
 
+        if self.reference_pick_armed:
+            pick_text = "REFERENCE PICK: click a body to make it the stationary center"
+            self.screen.blit(self.font.render(pick_text, True, LOCK_COLOR), (16, 67))
+            controls_y = 94
+        elif self.reference_body is not None:
+            vx, vy = self.reference_body.vx, self.reference_body.vy
+            ref_text = (
+                f"Reference frame: {self.reference_body.name} "
+                f"(subtracting v=<{vx:.3g}, {vy:.3g}>)   F: release"
+            )
+            self.screen.blit(self.small_font.render(ref_text, True, LOCK_COLOR), (16, 68))
+            controls_y = 92
+        else:
+            controls_y = 68
+
         controls = [
             "Left click: add custom body   Right click: remove nearest   Middle-drag: pan",
+            "F then click body: lock moving reference frame   F again: return to world frame",
             "C: color   [ / ]: smaller/larger body   +/-: speed (up to 4096x)   T: trails",
             "Mouse wheel: zoom   Space: pause   R: reset   M: scenario menu   Esc/Q: quit",
         ]
         for i, line in enumerate(controls):
-            self.screen.blit(self.small_font.render(line, True, MUTED), (16, 68 + 21 * i))
+            self.screen.blit(self.small_font.render(line, True, MUTED), (16, controls_y + 21 * i))
 
         pygame.display.flip()
 
